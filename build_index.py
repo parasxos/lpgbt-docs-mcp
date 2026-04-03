@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Build the lpGBT documentation SQLite index.
 
-Reads HTML manuals (v0, v1, v2) and optionally the Python register map
-files from lpgbt_control_lib, then builds a searchable SQLite + FTS5 index.
+Reads HTML manuals (v0, v1, v2), Python register map files, and the
+lpgbt_control_lib driver source code, then builds a searchable SQLite + FTS5 index.
 
 Usage:
-    python3 build_index.py [--html-dir data/html] [--regmap-dir /path/to/lpgbt_control_lib]
+    python3 build_index.py [--html-dir data/html] [--regmap-dir /path/to/lpgbt_control_lib] [--driver-dir /path/to/lpgbt_control_lib]
 """
 
 import argparse
@@ -16,6 +16,7 @@ from pathlib import Path
 
 from src.lpgbt_docs_mcp.html_parser import parse_html_page, extract_registers_from_html
 from src.lpgbt_docs_mcp.register_parser import parse_register_maps
+from src.lpgbt_docs_mcp.driver_parser import ingest_control_lib
 
 
 def create_schema(conn: sqlite3.Connection):
@@ -137,6 +138,22 @@ def ingest_python_registers(conn: sqlite3.Connection, regmap_dir: Path):
     return total
 
 
+def ingest_driver_lib(conn: sqlite3.Connection, driver_dir: Path):
+    """Parse lpgbt_control_lib Python source for driver documentation."""
+    chunks = ingest_control_lib(driver_dir)
+    total = 0
+    for chunk in chunks:
+        conn.execute(
+            "INSERT INTO sections (version, page, category, heading, summary, markdown) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            ("all", chunk["page"], chunk["category"], chunk["heading"],
+             chunk["summary"], chunk["markdown"]),
+        )
+        total += 1
+    print(f"  Inserted {total} driver documentation sections")
+    return total
+
+
 def rebuild_fts(conn: sqlite3.Connection):
     """Rebuild the FTS5 index."""
     conn.execute("INSERT INTO sections_fts(sections_fts) VALUES('rebuild')")
@@ -170,6 +187,8 @@ def main():
                         help="Directory containing v0/v1/v2 HTML subdirectories")
     parser.add_argument("--regmap-dir", type=Path, default=None,
                         help="Path to lpgbt_control_lib directory with Python register maps")
+    parser.add_argument("--driver-dir", type=Path, default=None,
+                        help="Path to lpgbt_control_lib directory for driver source ingestion")
     parser.add_argument("--out", type=Path, default=Path("data/lpgbt_docs.db"),
                         help="Output SQLite database path")
     args = parser.parse_args()
@@ -197,6 +216,12 @@ def main():
         ingest_python_registers(conn, args.regmap_dir)
     else:
         print("\n--- Skipping Python register maps (use --regmap-dir to include) ---")
+
+    if args.driver_dir and args.driver_dir.exists():
+        print(f"\n--- Ingesting driver library from {args.driver_dir} ---")
+        ingest_driver_lib(conn, args.driver_dir)
+    else:
+        print("\n--- Skipping driver library (use --driver-dir to include) ---")
 
     print("\n--- Rebuilding FTS index ---")
     rebuild_fts(conn)
