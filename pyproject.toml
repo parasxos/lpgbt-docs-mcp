@@ -1,0 +1,14 @@
+[project]
+name = "lpgbt-docs-mcp"
+version = "0.1.0"
+description = "MCP server providing lpGBT chip documentation search and retrieval (v0, v1, v2)"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp[cli]>=1.0.0",
+    "beautifulsoup4>=4.12",
+    "markdownify>=0.14",
+    "lxml>=5.0",
+]
+
+[project.scripts]
+lpgbt-docs-mcp = "lpgbt_docs_mcp.server:main"
